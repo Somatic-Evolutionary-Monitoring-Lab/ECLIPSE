@@ -358,6 +358,7 @@ extract_normalised_sd <- function(data., hard_filters, multiplicity_col = 'mean_
   
   data.[, hard_filtered := grepl( paste( hard_filters, collapse = "|" ), get(filter_col) ) | is.na(get(background_col)) ]
   
+
   # multiplicity < 1 is not possible (caused by noise in data) - correct this
   data.[ get(multiplicity_col) < 1, (multiplicity_col) := 1 ]
 
@@ -367,8 +368,8 @@ extract_normalised_sd <- function(data., hard_filters, multiplicity_col = 'mean_
   data.[, purity_est := calculate_purity( vaf, 
                                          get(tumour_totcn_col), get(normal_totcn_col),
                                          get(multiplicity_col)  ),  by = seq_len(nrow(data.)) ]
-  data.[, purity := mean( purity_est [ (is_clonal & high_quality) ] ), 
-       by = get(sample_id_col) ]
+  data.[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE %in% TRUE & high_quality) ] ), 
+       by = sample_identifier ]
   
   # calculate ccf using NEJM formula
   data.[, ccf := calculate_ccf( vaf,  purity,
@@ -385,7 +386,7 @@ extract_normalised_sd <- function(data., hard_filters, multiplicity_col = 'mean_
   data.[ , mutation_present := ppois(get(varcount_col) - 1, (get(background_col)*get(depth_col)), lower.tail = FALSE) < 0.01 ]
   
   # Use the samples where the signal is >10x the background noise (default - can change this)
-  clones <- data.[ (high_quality) & get(is_clonal_col) == TRUE,
+  clones <- data.[ (high_quality) & get(is_clonal_col) %in% TRUE %in% TRUE,
                    .(ctDNA_frac = mean(clonal_purity_mut, na.rm = TRUE),
                      background = mean( get(background_col) ),
                      sd = sd(clonal_purity_mut, na.rm = TRUE),
@@ -482,15 +483,31 @@ power_calc <- function( data., type, niose_col = 'background_error',
   # calculate CCF for this vaf
   # Allow na.rm here for CIN clones which have NA multiplicity for amps
   # and also when at sample level to remove NA clones without CN info
-  if( !type == 'power_purity' ){
+  if( type == 'power_sample_ccf' ){
     
+    data_use <- data.[ (get(filter_col) & get(clonal_col)) ]
     # calculate vaf using number of observations required for p = 0.01
-    lambda <- data.[ (get(filter_col) & subset), sum(get(niose_col)*get(depth_col))*num_muts_correction ]
-    signifcant_vaf_95 <- data.[ (get(filter_col) & subset), qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    lambda <- data_use[, sum(get(niose_col)*get(depth_col))*num_muts_correction ]
+    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
     
-    power_95 <- calculate_ccf(signifcant_vaf_95, purity, data.[(get(filter_col) & subset), mean(get(tumour_totcn_col), na.rm = T)],
-                              data.[(get(filter_col) & subset), mean(get(normal_cn_col))], 
-                              data.[(get(filter_col) & subset), mean(get(multiplicity_col), na.rm = T)])
+    power_95 <- calculate_ccf(signifcant_vaf_95, purity, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
+                              data_use[, mean(get(normal_cn_col))], 
+                              data_use[, mean(get(multiplicity_col), na.rm = T)])
+    
+  } 
+  
+  # add another if statement for power_clone ccf and remove the filter for any non clonal
+  
+  if( type == 'power_clone_ccf' ){
+    
+    data_use <- data.[ get(filter_col) ]
+    # calculate vaf using number of observations required for p = 0.01
+    lambda <- data_use[, sum(get(niose_col)*get(depth_col))*num_muts_correction ]
+    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    
+    power_95 <- calculate_ccf(signifcant_vaf_95, purity, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
+                              data_use[, mean(get(normal_cn_col))], 
+                              data_use[, mean(get(multiplicity_col), na.rm = T)])
     
   } 
   
@@ -498,12 +515,14 @@ power_calc <- function( data., type, niose_col = 'background_error',
   if( type == 'power_purity' ){
     
     # calculate vaf using number of observations required for p = 0.01
-    lambda <- data.[ (get(filter_col) & get(clonal_col)), sum(get(niose_col)*get(depth_col))*num_muts_correction ]
-    signifcant_vaf_95 <- data.[ (get(filter_col) & get(clonal_col)), qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
     
-    power_95 <- calculate_purity(signifcant_vaf_95, data.[(get(filter_col) & subset), mean(get(tumour_totcn_col), na.rm = T)],
-                              data.[(get(filter_col) & subset), mean(get(normal_cn_col))], 
-                              data.[(get(filter_col) & subset), mean(get(multiplicity_col), na.rm = T)])
+    data_use <- data.[ (get(filter_col) & get(clonal_col)) ]
+    lambda <- data_use[ , sum(get(niose_col)*get(depth_col))*num_muts_correction ]
+    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    
+    power_95 <- calculate_purity(signifcant_vaf_95, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
+                              data_use[, mean(get(normal_cn_col))], 
+                              data_use[, mean(get(multiplicity_col), na.rm = T)])
 
   }
   
@@ -593,7 +612,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
                                  tumour_totcn_col = 'total_cpn', normal_totcn_col = 'normal_cpn',
                                  tumour_purity = 'tumour_cellularity', tumour_ccf_col = 'tumour_ccf', 
                                  hard_filtered_col = NA, mrd_filtered_col = NA, multiplicity_col = NA,
-                                 testing = FALSE, background_groups_max = 4 ){
+                                 testing = FALSE, background_groups_max = 4, num_subclonal_mutations_sim = 5 ){
   
   class_origin <- class( data )
   data <- as.data.table( data )
@@ -603,13 +622,11 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
   
   # allow to run for multiple samples if inputted as 1 data table
   data[, sample_clone := paste( get(sample_id_col), get(clone_col), sep = "_") ]
+  data[, sample_identifier := get(sample_id_col) ]
   
   ## ensure the required columns are numeric
   num_cols <- c(varcount_col, depth_col, tumour_totcn_col, normal_totcn_col, multiplicity_col, niose_col)
   data[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
-  if( is.na(multiplicity_col)){
-  
-  }
   
   # if filter cols are left NA then just use all mutations
   if( all( is.na(hard_filtered_col) ) ){  data[, hard_filtered := FALSE ] ; hard_filtered_col = 'hard_filtered' }
@@ -663,8 +680,9 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
   data[, purity_est := calculate_purity( vaf_nobackground, 
                                get(tumour_totcn_col), get(normal_totcn_col),
                                get(multiplicity_col)  ),  by = seq_len(nrow(data)) ]
-  data[, purity := mean( purity_est [ (is_clonal & high_quality) ] ), 
-       by = get(sample_id_col) ]
+                               
+  data[, purity := mean( purity_est [ get(is_clonal_col) %in% TRUE %in% TRUE & (high_quality) ] ), 
+       by = sample_identifier ]
   
   # calculate ccf using NEJM formula
   data[, ccf := calculate_ccf( vaf_nobackground,  purity,
@@ -677,7 +695,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
 
   # correct for any subsequent CIN where it is very obvious by detecting
   # multimodal distributions in mutations that should be the same CN and
-  # assigning the mutations each mode thier new CN state
+  # assigning the mutations each mode thier new CN state ## checkpoint
   data <- rbindlist( lapply(data[, unique(sample_clone) ], function(clone_name){
     if( testing ) print(clone_name)
     correct_new_CIN(data. = data[ sample_clone == clone_name ],
@@ -727,8 +745,8 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
   data[, purity_est := calculate_purity( vaf_nobackground, 
                                          get(tumour_totcn_col), get(normal_totcn_col),
                                          get(multiplicity_col)  ),  by = seq_len(nrow(data)) ]
-  data[, purity := mean( purity_est [ (is_clonal & high_quality) ] ), 
-       by = get(sample_id_col) ]
+  data[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE %in% TRUE & high_quality) ] ), 
+       by = sample_identifier ]
   
   # and now recalculate the ccfs etc based on this more accurate purity
   # calculate ccf using NEJM formula
@@ -764,7 +782,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
   ## Also do this for all mutations in the sample - mrd test
   data[, mrd_p :=  ppois(sum(get(varcount_col)[!get(mrd_filtered_col)]) - 1, 
                                   sum((get(niose_col)*get(depth_col))[!get(mrd_filtered_col)]), lower.tail = FALSE), 
-       by = get(sample_id_col)]
+       by = sample_identifier ]
   
   ## Also do this at the mutation level
   data[ (!get(hard_filtered_col)), mutation_present_p := ppois(get(varcount_col) - 1, 
@@ -789,12 +807,13 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
                 tumour_totcn_col = tumour_totcn_col, 
                 depth_col = depth_col,
                 clonal_col = is_clonal_col, 
-                p_theshold = 0.01 ) 
+                p_theshold = 0.01,
+                num_subclonal_mutations_sim = num_subclonal_mutations_sim) 
     } ) )
-  
-  data <- rbindlist( lapply(data[, unique(get(sample_id_col)) ], function(sample){ 
-    if( testing ) print(sample)
-    power_calc( data[ get(sample_id_col) == sample ], 
+
+  data <- rbindlist( lapply(data[, unique(get(sample_id_col)) ], function(sample_name){ 
+    if( testing ) print(sample_name)
+    power_calc( data[ get(sample_id_col) == sample_name ], 
                 type = 'power_sample_ccf',
                 niose_col = niose_col, 
                 filter_col = 'high_quality', 
@@ -805,12 +824,12 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
                 depth_col = depth_col,
                 clonal_col = is_clonal_col,  
                 p_theshold = 0.01, 
-                num_subclonal_mutations_sim = 5 ) 
+                num_subclonal_mutations_sim = num_subclonal_mutations_sim ) 
     } ) )
-  
-  data <- rbindlist( lapply(data[, unique(get(sample_id_col)) ], function(sample){ 
-    if( testing ) print(sample)
-    power_calc( data[ get(sample_id_col) == sample ], 
+
+  data_test <- lapply(data[, unique(get(sample_id_col)) ], function(sample_name){ 
+    if( testing ) print(sample_name)
+    power_calc( data[ get(sample_id_col) == sample_name ], 
                 type = 'power_purity',
                 niose_col = niose_col, 
                 filter_col = 'high_quality', 
@@ -820,17 +839,18 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
                 tumour_totcn_col = tumour_totcn_col, 
                 depth_col = depth_col,
                 clonal_col = is_clonal_col, 
-                p_theshold = 0.01 ) 
-    } ) )
+                p_theshold = 0.01,
+                num_subclonal_mutations_sim = num_subclonal_mutations_sim) 
+    } ) 
 
   message( 'estimating sample-level clonalty..')
 
   ## Finally check for each subclone whether the CCFs are significantly different to the clonal cluster in a given sample
   ## If not this indicates this subclone may have become clonal as far as we can detect (though there may still be 
   ## small # of cells not from this subclone that are undetectable but grow back at later time points)
-  data <- rbindlist( lapply(data[, unique(get(sample_id_col)) ], function(sample){ 
-    if( testing ) print(sample)
-    call_clonal(data[ get(sample_id_col) == sample ],
+  data <- rbindlist( lapply(data[, unique(get(sample_id_col)) ], function(sample_name){ 
+    if( testing ) print(sample_name)
+    call_clonal(data[ get(sample_id_col) == sample_name ],
                 data_col = 'ccf', 
                 filter_col = hard_filtered_col, 
                 clone_col = clone_col, 
@@ -839,7 +859,8 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
     } ) )
   
   # remove sample_clone col we made at the start & quality col
-  data[, `:=`(sample_clone = NULL) ]
+  data[, `:=`(sample_clone = NULL,
+              sample_identifier = NULL) ]
   
   # if data.frame was inputted then convert back
   if(!any(class_origin == 'data.table')) data <- as.data.frame(data)
@@ -851,12 +872,16 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
 #=====#
 # END #
 #=====#
-# 
-# normalisedSD_max = 0.56; sample_id_col = 'tracerx_id'; niose_col = 'tnc_error_rate';
-# chromosome_col = 'chromosome'; position_col = 'position'; alt_base_col = 'alternate';
-# varcount_col = 'dao'; depth_col = 'ddp'; clone_col = paste("PyCloneCluster", pyclone_type, sep = '_');
-# is_clonal_col = 'is_clonal'; tumour_vaf_col = 'mean_tumour_vaf';
-# tumour_totcn_col = 'tumour_total_cpn'; normal_totcn_col = 'normal_total_cpn';
-# tumour_purity = 'mean_tumour_cellularity'; tumour_ccf_col = 'mean_tumour_ccf';
-# hard_filtered_col = 'hard_filtered'; mrd_filtered_col = 'mrd_filtered'
-# multiplicity_col = NA; testing = T
+
+normalisedSD_max = 1; sample_id_col = 'sample_id'; niose_col = 'background_error'; 
+chromosome_col = 'chr'; position_col = 'pos'; alt_base_col = 'alt'; 
+varcount_col = 'supporting_reads'; depth_col = 'depth'; clone_col = 'clone'; 
+is_clonal_col = 'is_clonal'; tumour_vaf_col = 'tumour_vaf'; 
+tumour_totcn_col = 'total_cpn'; normal_totcn_col = 'normal_cpn';
+tumour_purity = 'tumour_cellularity'; tumour_ccf_col = 'tumour_ccf'; 
+hard_filtered_col = NA; mrd_filtered_col = NA; multiplicity_col = NA;
+testing = FALSE; background_groups_max = 4
+
+
+
+
