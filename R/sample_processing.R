@@ -368,7 +368,7 @@ extract_normalised_sd <- function(data., hard_filters, multiplicity_col = 'mean_
   data.[, purity_est := calculate_purity( vaf, 
                                          get(tumour_totcn_col), get(normal_totcn_col),
                                          get(multiplicity_col)  ),  by = seq_len(nrow(data.)) ]
-  data.[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE %in% TRUE & high_quality) ] ), 
+  data.[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE & high_quality) ] ), 
        by = sample_identifier ]
   
   # calculate ccf using NEJM formula
@@ -386,7 +386,7 @@ extract_normalised_sd <- function(data., hard_filters, multiplicity_col = 'mean_
   data.[ , mutation_present := ppois(get(varcount_col) - 1, (get(background_col)*get(depth_col)), lower.tail = FALSE) < 0.01 ]
   
   # Use the samples where the signal is >10x the background noise (default - can change this)
-  clones <- data.[ (high_quality) & get(is_clonal_col) %in% TRUE %in% TRUE,
+  clones <- data.[ (high_quality) & get(is_clonal_col) %in% TRUE,
                    .(ctDNA_frac = mean(clonal_purity_mut, na.rm = TRUE),
                      background = mean( get(background_col) ),
                      sd = sd(clonal_purity_mut, na.rm = TRUE),
@@ -496,8 +496,7 @@ power_calc <- function( data., type, niose_col = 'background_error',
     
   } 
   
-  # add another if statement for power_clone ccf and remove the filter for any non clonal
-  
+  # calculate the CCF we'd be powered to detect for an average subclone in this sample
   if( type == 'power_clone_ccf' ){
     
     data_use <- data.[ get(filter_col) ]
@@ -681,7 +680,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
                                get(tumour_totcn_col), get(normal_totcn_col),
                                get(multiplicity_col)  ),  by = seq_len(nrow(data)) ]
                                
-  data[, purity := mean( purity_est [ get(is_clonal_col) %in% TRUE %in% TRUE & (high_quality) ] ), 
+  data[, purity := mean( purity_est [ get(is_clonal_col) %in% TRUE & (high_quality) ] ), 
        by = sample_identifier ]
   
   # calculate ccf using NEJM formula
@@ -695,7 +694,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
 
   # correct for any subsequent CIN where it is very obvious by detecting
   # multimodal distributions in mutations that should be the same CN and
-  # assigning the mutations each mode thier new CN state ## checkpoint
+  # assigning the mutations each mode thier new CN state
   data <- rbindlist( lapply(data[, unique(sample_clone) ], function(clone_name){
     if( testing ) print(clone_name)
     correct_new_CIN(data. = data[ sample_clone == clone_name ],
@@ -745,7 +744,7 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
   data[, purity_est := calculate_purity( vaf_nobackground, 
                                          get(tumour_totcn_col), get(normal_totcn_col),
                                          get(multiplicity_col)  ),  by = seq_len(nrow(data)) ]
-  data[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE %in% TRUE & high_quality) ] ), 
+  data[, purity := mean( purity_est [ (get(is_clonal_col) %in% TRUE & high_quality) ] ), 
        by = sample_identifier ]
   
   # and now recalculate the ccfs etc based on this more accurate purity
@@ -872,16 +871,3 @@ clonal_deconvolution <- function(data, normalisedSD_max = 0.56, sample_id_col = 
 #=====#
 # END #
 #=====#
-
-normalisedSD_max = 1; sample_id_col = 'sample_id'; niose_col = 'background_error'; 
-chromosome_col = 'chr'; position_col = 'pos'; alt_base_col = 'alt'; 
-varcount_col = 'supporting_reads'; depth_col = 'depth'; clone_col = 'clone'; 
-is_clonal_col = 'is_clonal'; tumour_vaf_col = 'tumour_vaf'; 
-tumour_totcn_col = 'total_cpn'; normal_totcn_col = 'normal_cpn';
-tumour_purity = 'tumour_cellularity'; tumour_ccf_col = 'tumour_ccf'; 
-hard_filtered_col = NA; mrd_filtered_col = NA; multiplicity_col = NA;
-testing = FALSE; background_groups_max = 4
-
-
-
-
