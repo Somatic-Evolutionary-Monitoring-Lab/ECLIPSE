@@ -38,6 +38,7 @@ ECLIPSE also takes several optional inputs:
 * binary call for if a variant  should be filtered from all analysis for a specific sample  
 * measurement for the maximally expected normalised standard deviation of CCF in high confidence clones used to identify clones with incoherent CCF
 distributions which may represent mutation clusters that are not true clones. This can be calculated using the `extract_normalised_sd` function which leverages higher tumour purity cfDNA samples in your data and clonal clusters to estimate this. 
+* average number of subclonal mutations tracked across the whole cohort
 
 The clone identifier, clonal vs subclonal status, mutation multiplicity and total copy number in tumour cells can be calculated using standard copy number extraction and clonal deconvolution methods (ASCAT, Battenberg, Pyclone, DpCLust) used for high tumour purity (>10%) samples, for example from tissue samples, which can then be used as estimates for these variables at the time of ctDNA sampling. Clonal status can be more accurately and comprehensively extracted from the sequencing of multiple high purity samples from the same patient, as is performed in TRACERx, but is not essential. See Application of ECLIPSE to the TRACERx cfDNA data section for further details. 
 
