@@ -460,10 +460,13 @@ outlier_test <- function( data., normalisedSD_max, data_col = 'cn_adj_vaf', LOD_
 #' clone ccf (type = 'power_clone_ccf') or the ccf of the average subclone in a sample (type = 'power_sample_ccf')
 #' based on the background noise, copy number status, depth of sequencing etc. Default is for detection at
 #' p = 0.01
+#' @param min_variant_reads Minimum number of variant supporting reads needed to call a clone present.
+#'   Defaults to 1, so the minimum detectable VAF is never 0. Set to 0 for the previous behaviour.
 power_calc <- function( data., type, niose_col = 'background_error',
                             filter_col = 'mrd_filtered', normal_cn_col = 'normal_cn', purity_col = 'purity',
                             multiplicity_col = 'multiplicity', tumour_totcn_col = 'total_cpn', depth_col = 'depth',
-                            clonal_col = 'is_clonal', p_theshold = 0.05, num_subclonal_mutations_sim = 5 ){
+                            clonal_col = 'is_clonal', p_theshold = 0.05, num_subclonal_mutations_sim = 5,
+                            min_variant_reads = 1 ){
   
   # work out which mutations we want depending on the type of power analysis we're doing
   if( type == 'power_purity'){ subset <- data.[, get(clonal_col) ] ; num_muts_correction = 1}
@@ -488,7 +491,8 @@ power_calc <- function( data., type, niose_col = 'background_error',
     data_use <- data.[ (get(filter_col) & get(clonal_col)) ]
     # calculate vaf using number of observations required for p = 0.01
     lambda <- data_use[, sum(get(niose_col)*get(depth_col))*num_muts_correction ]
-    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    # no clone can be detected on zero variant reads, so floor the required count at min_variant_reads
+    signifcant_vaf_95 <- data_use[, max(qpois((1 - p_theshold), lambda = lambda), min_variant_reads) / (sum(get(depth_col))*num_muts_correction) ]
     
     power_95 <- calculate_ccf(signifcant_vaf_95, purity, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
                               data_use[, mean(get(normal_cn_col))], 
@@ -502,7 +506,7 @@ power_calc <- function( data., type, niose_col = 'background_error',
     data_use <- data.[ get(filter_col) ]
     # calculate vaf using number of observations required for p = 0.01
     lambda <- data_use[, sum(get(niose_col)*get(depth_col))*num_muts_correction ]
-    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    signifcant_vaf_95 <- data_use[, max(qpois((1 - p_theshold), lambda = lambda), min_variant_reads) / (sum(get(depth_col))*num_muts_correction) ]
     
     power_95 <- calculate_ccf(signifcant_vaf_95, purity, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
                               data_use[, mean(get(normal_cn_col))], 
@@ -517,7 +521,7 @@ power_calc <- function( data., type, niose_col = 'background_error',
     
     data_use <- data.[ (get(filter_col) & get(clonal_col)) ]
     lambda <- data_use[ , sum(get(niose_col)*get(depth_col))*num_muts_correction ]
-    signifcant_vaf_95 <- data_use[, qpois((1 - p_theshold), lambda = lambda) / (sum(get(depth_col))*num_muts_correction) ]
+    signifcant_vaf_95 <- data_use[, max(qpois((1 - p_theshold), lambda = lambda), min_variant_reads) / (sum(get(depth_col))*num_muts_correction) ]
     
     power_95 <- calculate_purity(signifcant_vaf_95, data_use[, mean(get(tumour_totcn_col), na.rm = T)],
                               data_use[, mean(get(normal_cn_col))], 

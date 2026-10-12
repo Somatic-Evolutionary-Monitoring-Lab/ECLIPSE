@@ -19,8 +19,13 @@ power_calc(
   depth_col = "depth",
   clonal_col = "is_clonal",
   p_theshold = 0.05,
-  num_subclonal_mutations_sim = 5
+  num_subclonal_mutations_sim = 5,
+  min_variant_reads = 1
 )
+}
+\arguments{
+\item{min_variant_reads}{Minimum number of variant supporting reads needed to call a clone present.
+Defaults to 1, so the minimum detectable VAF is never 0. Set to 0 for the previous behaviour.}
 }
 \description{
 Function to estimate our power to significantly detect either sample purity (type = 'power_purity')
